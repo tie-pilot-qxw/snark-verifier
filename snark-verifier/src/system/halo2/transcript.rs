@@ -19,7 +19,7 @@ pub mod evm;
 #[cfg(feature = "loader_halo2")]
 pub mod halo2;
 
-impl<C: CurveAffine, R: Read> Transcript<C, NativeLoader> for Blake2bRead<R, C, Challenge255<C>>
+impl<C: CurveAffine, R: Read + Send + Sync + Clone> Transcript<C, NativeLoader> for Blake2bRead<R, C, Challenge255<C>>
 where
     C::Scalar: FromUniformBytes<64>,
 {
@@ -42,7 +42,7 @@ where
     }
 }
 
-impl<C: CurveAffine, R: Read> TranscriptRead<C, NativeLoader> for Blake2bRead<R, C, Challenge255<C>>
+impl<C: CurveAffine, R: Read + Send + Sync + Clone> TranscriptRead<C, NativeLoader> for Blake2bRead<R, C, Challenge255<C>>
 where
     C::Scalar: FromUniformBytes<64>,
 {
@@ -57,7 +57,7 @@ where
     }
 }
 
-impl<C: CurveAffine, W: Write> Transcript<C, NativeLoader> for Blake2bWrite<W, C, Challenge255<C>>
+impl<C: CurveAffine, W: Write + Send + Sync + Clone> Transcript<C, NativeLoader> for Blake2bWrite<W, C, Challenge255<C>>
 where
     C::Scalar: FromUniformBytes<64>,
 {

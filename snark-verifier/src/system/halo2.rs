@@ -697,7 +697,7 @@ impl<C: CurveAffine> EncodedChallenge<C> for MockChallenge {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct MockTranscript<F: PrimeField>(F);
 
 impl<C: CurveAffine> Transcript<C, MockChallenge> for MockTranscript<C::Scalar> {

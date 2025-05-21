@@ -17,6 +17,7 @@ use crate::{
     Error,
 };
 use halo2_proofs::transcript::EncodedChallenge;
+use std::fmt::Debug;
 use std::{
     io::{self, Read, Write},
     iter,
@@ -25,7 +26,7 @@ use std::{
 };
 
 /// Transcript for verifier on EVM using keccak256 as hasher.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EvmTranscript<C: CurveAffine, L: Loader<C>, S, B> {
     loader: L,
     stream: S,
@@ -288,6 +289,7 @@ impl<C, S> halo2_proofs::transcript::Transcript<C, ChallengeEvm<C>>
 where
     C: CurveAffine,
     C::Scalar: PrimeField<Repr = [u8; 32]>,
+    S: Send + Sync + Clone
 {
     fn squeeze_challenge(&mut self) -> ChallengeEvm<C> {
         ChallengeEvm(Transcript::squeeze_challenge(self))
@@ -310,7 +312,7 @@ where
     }
 }
 
-impl<C, R: Read> halo2_proofs::transcript::TranscriptRead<C, ChallengeEvm<C>>
+impl<C, R: Read + Send + Sync + Clone> halo2_proofs::transcript::TranscriptRead<C, ChallengeEvm<C>>
     for EvmTranscript<C, NativeLoader, R, Vec<u8>>
 where
     C: CurveAffine,
@@ -333,7 +335,7 @@ where
     }
 }
 
-impl<C, R: Read> halo2_proofs::transcript::TranscriptReadBuffer<R, C, ChallengeEvm<C>>
+impl<C, R: Read + Send + Sync + Clone> halo2_proofs::transcript::TranscriptReadBuffer<R, C, ChallengeEvm<C>>
     for EvmTranscript<C, NativeLoader, R, Vec<u8>>
 where
     C: CurveAffine,
@@ -344,7 +346,7 @@ where
     }
 }
 
-impl<C, W: Write> halo2_proofs::transcript::TranscriptWrite<C, ChallengeEvm<C>>
+impl<C, W: Write + Send + Sync + Clone + Debug> halo2_proofs::transcript::TranscriptWrite<C, ChallengeEvm<C>>
     for EvmTranscript<C, NativeLoader, W, Vec<u8>>
 where
     C: CurveAffine,
@@ -374,7 +376,7 @@ where
     }
 }
 
-impl<C, W: Write> halo2_proofs::transcript::TranscriptWriterBuffer<W, C, ChallengeEvm<C>>
+impl<C, W: Write + Send + Sync + Clone + Debug> halo2_proofs::transcript::TranscriptWriterBuffer<W, C, ChallengeEvm<C>>
     for EvmTranscript<C, NativeLoader, W, Vec<u8>>
 where
     C: CurveAffine,

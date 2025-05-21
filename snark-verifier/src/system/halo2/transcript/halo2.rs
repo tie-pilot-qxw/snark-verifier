@@ -17,6 +17,7 @@ use crate::{
     Error,
 };
 use halo2_proofs::transcript::EncodedChallenge;
+use std::fmt::Debug;
 use std::{
     io::{self, Read, Write},
     rc::Rc,
@@ -48,7 +49,7 @@ where
     EcPoint(L::LoadedEcPoint),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Transcript for verifier in [`halo2_proofs`] circuit using poseidon hasher.
 /// Currently It assumes the elliptic curve scalar field is same as native
 /// field.
@@ -358,7 +359,7 @@ impl<C: CurveAffine> EncodedChallenge<C> for ChallengeScalar<C> {
     }
 }
 
-impl<C: CurveAffine, S, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize>
+impl<C: CurveAffine, S: Clone + Send + Sync, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize>
     halo2_proofs::transcript::Transcript<C, ChallengeScalar<C>>
     for PoseidonTranscript<C, NativeLoader, S, T, RATE, R_F, R_P>
 {
@@ -388,7 +389,7 @@ impl<C, R, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize
     for PoseidonTranscript<C, NativeLoader, R, T, RATE, R_F, R_P>
 where
     C: CurveAffine,
-    R: Read,
+    R: Read + Clone + Send + Sync,
 {
     fn read_point(&mut self) -> io::Result<C> {
         match TranscriptRead::read_ec_point(self) {
@@ -413,7 +414,7 @@ impl<C, R, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize
 where
     C: CurveAffine,
     C::Scalar: FieldExt,
-    R: Read,
+    R: Read + Clone + Send + Sync,
 {
     fn init(reader: R) -> Self {
         Self::new::<0>(reader)
@@ -425,7 +426,7 @@ impl<C, W, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize
     for PoseidonTranscript<C, NativeLoader, W, T, RATE, R_F, R_P>
 where
     C: CurveAffine,
-    W: Write,
+    W: Write + Clone + Send + Sync + Debug,
 {
     fn write_point(&mut self, ec_point: C) -> io::Result<()> {
         halo2_proofs::transcript::Transcript::<C, ChallengeScalar<C>>::common_point(
@@ -448,7 +449,7 @@ impl<C, W, const T: usize, const RATE: usize, const R_F: usize, const R_P: usize
 where
     C: CurveAffine,
     C::Scalar: FieldExt,
-    W: Write,
+    W: Write + Clone + Send + Sync + Debug,
 {
     fn init(writer: W) -> Self {
         Self::new::<0>(writer)

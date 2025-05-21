@@ -106,7 +106,7 @@ impl<F: PrimeField, L: LoadedScalar<F>, const T: usize, const RATE: usize> State
 }
 
 /// Poseidon hasher with configurable `RATE`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Poseidon<F: PrimeField, L, const T: usize, const RATE: usize> {
     spec: OptimizedPoseidonSpec<F, T, RATE>,
     default_state: State<F, L, T, RATE>,
