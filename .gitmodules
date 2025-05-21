@@ -1,0 +1,3 @@
+[submodule "halo2-lib"]
+	path = halo2-lib
+	url = https://github.com/tie-pilot-qxw/halo2-lib.git

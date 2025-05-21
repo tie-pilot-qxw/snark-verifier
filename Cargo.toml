@@ -2,6 +2,9 @@
 members = [
     "snark-verifier",
     "snark-verifier-sdk",
+    "halo2-lib/halo2-base",
+    "halo2-lib/halo2-ecc",
+    "hashes/zkevm",
 ]
 resolver = "2"
 
