@@ -5,7 +5,11 @@ use super::{CircuitExt, PlonkVerifier};
 use ark_std::{end_timer, start_timer};
 use halo2_base::halo2_proofs::{
     halo2curves::bn256::{Bn256, Fq, Fr, G1Affine},
-    plonk::{create_proof, verify_proof, Circuit, JitProverEnv, ProvingKey, VerifyingKey},
+    plonk::{
+        gen::RtInstance,
+        jit::{create_proof, JitProverEnv},
+        verify_proof, Circuit, ProvingKey, VerifyingKey,
+    },
     poly::{
         commitment::{ParamsProver, Prover, Verifier},
         kzg::{
@@ -22,15 +26,31 @@ use itertools::Itertools;
 use rand::{rngs::StdRng, SeedableRng};
 pub use snark_verifier::loader::evm::encode_calldata;
 use snark_verifier::{
-    loader::evm::{compile_solidity, EvmLoader},
+    loader::{
+        evm::{compile_solidity, EvmLoader},
+        native::NativeLoader,
+    },
     pcs::{
         kzg::{KzgAccumulator, KzgAsVerifyingKey, KzgDecidingKey, KzgSuccinctVerifyingKey},
         AccumulationDecider, AccumulationScheme, PolynomialCommitmentScheme,
     },
-    system::halo2::{compile, transcript::evm::EvmTranscript, Config},
+    system::halo2::{
+        compile,
+        transcript::evm::{ChallengeEvm, EvmTranscript},
+        Config,
+    },
     verifier::SnarkVerifier,
 };
 use std::{fs, io, path::Path, rc::Rc};
+
+pub type Jit<CC> = JitProverEnv<
+    RtInstance<
+        KZGCommitmentScheme<Bn256>,
+        ChallengeEvm<G1Affine>,
+        EvmTranscript<G1Affine, NativeLoader, Vec<u8>, Vec<u8>>,
+    >,
+    CC,
+>;
 
 /// Generates a proof for evm verification using either SHPLONK or GWC proving method. Uses Keccak for Fiat-Shamir.
 pub fn gen_evm_proof<'params, C, P, V>(
@@ -38,7 +58,7 @@ pub fn gen_evm_proof<'params, C, P, V>(
     pk: &'params ProvingKey<G1Affine>,
     circuit: C,
     instances: Vec<Vec<Fr>>,
-    env_info: &mut Option<JitProverEnv>,
+    jit: Option<&mut Jit<C>>,
 ) -> Vec<u8>
 where
     C: Circuit<Fr> + Send + Sync + Clone + 'static,
@@ -64,7 +84,8 @@ where
             &[instances.as_slice()],
             rng,
             &mut transcript,
-            env_info,
+            jit,
+            "aggregation-circuit",
         )
         .unwrap();
         transcript.finalize()
@@ -95,7 +116,7 @@ pub fn gen_evm_proof_gwc<'params, C: Circuit<Fr> + Clone + Send + Sync + 'static
     pk: &'params ProvingKey<G1Affine>,
     circuit: C,
     instances: Vec<Vec<Fr>>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<C>>,
 ) -> Vec<u8> {
     gen_evm_proof::<C, ProverGWC<_>, VerifierGWC<_>>(params, pk, circuit, instances, env_info)
 }
@@ -105,9 +126,11 @@ pub fn gen_evm_proof_shplonk<'params, C: Circuit<Fr> + Clone + Send + Sync + 'st
     pk: &'params ProvingKey<G1Affine>,
     circuit: C,
     instances: Vec<Vec<Fr>>,
-    env_info: &mut Option<JitProverEnv>
+    env_info: Option<&mut Jit<C>>,
 ) -> Vec<u8> {
-    gen_evm_proof::<C, ProverSHPLONK<_>, VerifierSHPLONK<_>>(params, pk, circuit, instances, env_info)
+    gen_evm_proof::<C, ProverSHPLONK<_>, VerifierSHPLONK<_>>(
+        params, pk, circuit, instances, env_info,
+    )
 }
 
 pub trait EvmKzgAccumulationScheme = PolynomialCommitmentScheme<

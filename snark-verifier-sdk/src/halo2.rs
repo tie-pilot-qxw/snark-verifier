@@ -1,7 +1,13 @@
 use super::{read_instances, write_instances, CircuitExt, PlonkSuccinctVerifier, Snark};
 #[cfg(feature = "display")]
 use ark_std::{end_timer, start_timer};
-use halo2_base::halo2_proofs::{self, plonk::JitProverEnv};
+use halo2_base::halo2_proofs::{
+    self,
+    plonk::{
+        gen::RtInstance,
+        jit::{create_proof, JitProverEnv},
+    },
+};
 pub use halo2_base::poseidon::hasher::spec::OptimizedPoseidonSpec;
 use halo2_proofs::{
     circuit::Layouter,
@@ -9,10 +15,7 @@ use halo2_proofs::{
         bn256::{Bn256, Fr, G1Affine},
         group::ff::Field,
     },
-    plonk::{
-        create_proof, keygen_vk, verify_proof, Circuit, ConstraintSystem, Error, ProvingKey,
-        VerifyingKey,
-    },
+    plonk::{keygen_vk, verify_proof, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey},
     poly::{
         commitment::{ParamsProver, Prover, Verifier},
         kzg::{
@@ -34,9 +37,8 @@ use snark_verifier::{
         kzg::{KzgAccumulator, KzgAsVerifyingKey, KzgSuccinctVerifyingKey},
         AccumulationScheme, PolynomialCommitmentScheme, Query,
     },
-    system::halo2::{compile, Config},
-    util::arithmetic::Rotation,
-    util::transcript::TranscriptWrite,
+    system::halo2::{compile, transcript::halo2::ChallengeScalar, Config},
+    util::{arithmetic::Rotation, transcript::TranscriptWrite},
     verifier::plonk::{PlonkProof, PlonkProtocol},
 };
 use std::{
@@ -73,6 +75,15 @@ lazy_static! {
         OptimizedPoseidonSpec::new::<R_F, R_P, SECURE_MDS>();
 }
 
+pub type Jit<CC> = JitProverEnv<
+    RtInstance<
+        KZGCommitmentScheme<Bn256>,
+        ChallengeScalar<G1Affine>,
+        PoseidonTranscript<NativeLoader, Vec<u8>>,
+    >,
+    CC,
+>;
+
 /// Generates a native proof using either SHPLONK or GWC proving method. Uses Poseidon for Fiat-Shamir.
 ///
 /// Caches the instances and proof if `path = Some(instance_path, proof_path)` is specified.
@@ -83,7 +94,7 @@ pub fn gen_proof<'params, C, P, V>(
     circuit: C,
     instances: Vec<Vec<Fr>>,
     path: Option<(&Path, &Path)>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<C>>,
 ) -> Vec<u8>
 where
     C: Circuit<Fr> + Clone + Send + Sync + 'static,
@@ -117,8 +128,17 @@ where
     let mut transcript =
         PoseidonTranscript::<NativeLoader, Vec<u8>>::from_spec(vec![], POSEIDON_SPEC.clone());
     let rng = StdRng::from_entropy();
-    create_proof::<_, P, _, _, _, _>(params, pk, &[circuit], &[&instances], rng, &mut transcript, env_info)
-        .unwrap();
+    create_proof::<_, P, _, _, _, _>(
+        params,
+        pk,
+        &[circuit],
+        &[&instances],
+        rng,
+        &mut transcript,
+        env_info,
+        "super-circuit",
+    )
+    .unwrap();
     let proof = transcript.finalize();
 
     #[cfg(feature = "display")]
@@ -162,7 +182,7 @@ pub fn gen_proof_gwc<C: Circuit<Fr> + Clone + Send + Sync + 'static>(
     circuit: C,
     instances: Vec<Vec<Fr>>,
     path: Option<(&Path, &Path)>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<C>>,
 ) -> Vec<u8> {
     gen_proof::<C, ProverGWC<_>, VerifierGWC<_>>(params, pk, circuit, instances, path, env_info)
 }
@@ -176,9 +196,11 @@ pub fn gen_proof_shplonk<C: Circuit<Fr> + Clone + Send + Sync + 'static>(
     circuit: C,
     instances: Vec<Vec<Fr>>,
     path: Option<(&Path, &Path)>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<C>>,
 ) -> Vec<u8> {
-    gen_proof::<C, ProverSHPLONK<_>, VerifierSHPLONK<_>>(params, pk, circuit, instances, path, env_info)
+    gen_proof::<C, ProverSHPLONK<_>, VerifierSHPLONK<_>>(
+        params, pk, circuit, instances, path, env_info,
+    )
 }
 
 /// Generates a SNARK using either SHPLONK or GWC multi-open scheme. Uses Poseidon for Fiat-Shamir.
@@ -190,7 +212,7 @@ pub fn gen_snark<'params, ConcreteCircuit, P, V>(
     pk: &ProvingKey<G1Affine>,
     circuit: ConcreteCircuit,
     path: Option<impl AsRef<Path>>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<ConcreteCircuit>>,
 ) -> Snark
 where
     ConcreteCircuit: CircuitExt<Fr> + Clone + Send + Sync + 'static,
@@ -216,7 +238,8 @@ where
     );
 
     let instances = circuit.instances();
-    let proof = gen_proof::<ConcreteCircuit, P, V>(params, pk, circuit, instances.clone(), None, env_info);
+    let proof =
+        gen_proof::<ConcreteCircuit, P, V>(params, pk, circuit, instances.clone(), None, env_info);
 
     let snark = Snark::new(protocol, instances, proof);
     if let Some(path) = &path {
@@ -240,7 +263,7 @@ pub fn gen_snark_gwc<ConcreteCircuit: CircuitExt<Fr> + Clone + Send + Sync + 'st
     pk: &ProvingKey<G1Affine>,
     circuit: ConcreteCircuit,
     path: Option<impl AsRef<Path>>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<ConcreteCircuit>>,
 ) -> Snark {
     gen_snark::<ConcreteCircuit, ProverGWC<_>, VerifierGWC<_>>(params, pk, circuit, path, env_info)
 }
@@ -254,9 +277,11 @@ pub fn gen_snark_shplonk<ConcreteCircuit: CircuitExt<Fr> + Clone + Send + Sync +
     pk: &ProvingKey<G1Affine>,
     circuit: ConcreteCircuit,
     path: Option<impl AsRef<Path>>,
-    env_info: &mut Option<JitProverEnv>,
+    env_info: Option<&mut Jit<ConcreteCircuit>>,
 ) -> Snark {
-    gen_snark::<ConcreteCircuit, ProverSHPLONK<_>, VerifierSHPLONK<_>>(params, pk, circuit, path, env_info)
+    gen_snark::<ConcreteCircuit, ProverSHPLONK<_>, VerifierSHPLONK<_>>(
+        params, pk, circuit, path, env_info,
+    )
 }
 
 /// Tries to deserialize a SNARK from the specified `path` using `bincode`.
